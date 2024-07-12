@@ -69,7 +69,7 @@ async function analyzeFormWithChatGPT(formHTML: string): Promise<string> {
   }
   `;
   const response = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o",
     messages: [{ role: "user", content: prompt }],
     response_format: { type: "json_object" },
     max_tokens: 2000,
@@ -96,6 +96,7 @@ async function normalizeFields(
 
 #ルール
   以下のステップで順に整形してください
+  - #typeがhiddenの場合はフォームフィールドから除外してください
   - #データに含まれないフィールドはフォームフィールドから除外してください
   - #データが持つkeyをそのまま#フォームフィールドのkeyとして使ってください
   - #フォームフィールドのtagは#データのtagと一致させてください
@@ -234,6 +235,6 @@ async function automateContactForm(url: string): Promise<void> {
   }
 }
 
-const url = "https://h-sunad.co.jp/contact/";
+const url = "https://mh-sp.com/contact/";
 
 automateContactForm(url);
