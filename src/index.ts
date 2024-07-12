@@ -30,7 +30,7 @@ async function analyzeFormWithChatGPT(formHTML: string): Promise<string> {
   次のHTMLを解析し、各フォーム要素のname属性とタイプを特定し、それを#サンプル　のようなJSON形式で返してください。
 
 #ルール
-  - keyがname属性の��そのままとなるようにしてください
+  - keyがname属性のそのままとなるようにしてください
     例; name="area[data][]"⇨key="area[data][]"
   - tagがinputかつtypeがradio の場合は一つ目のoptionのvalue属性をvalueに入れてください。
   - tagがselectの場合はoptionのvalue属性が空文字でない中から3つ目の要素のvalueに入れてください。
@@ -85,7 +85,7 @@ async function analyzeFormWithChatGPT(formHTML: string): Promise<string> {
 }
 
 async function normalizeFields(
-  fields: Record<string, { tag: string; type: string; value?: string }>
+  fields: Record<string, { tag: string; type: string; value?: string }>,
 ): Promise<Record<string, { tag: string; type: string; value?: string }>> {
   const prompt = `
   #指示
@@ -101,8 +101,6 @@ async function normalizeFields(
   - #フォームフィールドのtagは#データのtagと一致させてください
   - #データにvalueが元々定義されている場合はその値を必ずvalueに入れてください。
   - valueの定義がされていない場合はkey名から適当に推察し、それらしいデータを入れてください
-
-
 
   #出力サンプル:
   {
@@ -142,8 +140,8 @@ async function fillFormAndSubmit(
   for (const [field, details] of Object.entries(formData)) {
     const selector = `${details.tag}[name="${field}"]`;
     const value = formData[field].value || getDefaultFieldValue(details.type);
-    console.log(selector)
-    console.log(value)
+    console.log(selector);
+    console.log(value);
     if (details.type === "checkbox") {
       const checkboxes = await page.$$(selector);
       if (checkboxes.length > 0) {
@@ -154,7 +152,7 @@ async function fillFormAndSubmit(
             `チェックボックスの操作中にエラーが発生しました: ${error}`,
           );
           // id属性を持つinputと紐づいているlabelを探してクリック
-          const inputId = await checkboxes[0].getAttribute('id');
+          const inputId = await checkboxes[0].getAttribute("id");
           if (inputId) {
             const labelForInput = await page.$(`label[for="${inputId}"]`);
             if (labelForInput) {
@@ -177,11 +175,18 @@ async function fillFormAndSubmit(
           }
         }
       } else {
-        console.error(
-          `チェックボックスが見つかりません: セレクター = ${selector}`,
+        // name属性が指定されていないチェックボックスを探してチェック
+        const unnamedCheckbox = await page.$(
+          'input[type="checkbox"]:not([name])',
         );
+        if (unnamedCheckbox) {
+          await unnamedCheckbox.setChecked(true, { force: true });
+        } else {
+          console.error(
+            `チェックボックスが見つかりません: セレクター = ${selector}`,
+          );
+        }
       }
-      console.log("check done");
     } else if (details.type === "radio") {
       await page.check(`${selector}[value="${value}"]`);
     } else if (details.tag === "select") {
@@ -219,9 +224,7 @@ async function automateContactForm(url: string): Promise<void> {
     console.log(requiredFields);
 
     // Normalize form data
-    const normalizedData = await normalizeFields(
-      requiredFields,
-    );
+    const normalizedData = await normalizeFields(requiredFields);
     console.log(normalizedData);
 
     // Fill and submit the form
