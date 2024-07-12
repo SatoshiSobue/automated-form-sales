@@ -30,7 +30,7 @@ async function analyzeFormWithChatGPT(formHTML: string): Promise<string> {
   次のHTMLを解析し、各フォーム要素のname属性とタイプを特定し、それを#サンプル　のようなJSON形式で返してください。
 
 #ルール
-  - keyがname属性の値そのままとなるようにしてください
+  - keyがname属性の��そのままとなるようにしてください
     例; name="area[data][]"⇨key="area[data][]"
   - tagがinputかつtypeがradio の場合は一つ目のoptionのvalue属性をvalueに入れてください。
   - tagがselectの場合はoptionのvalue属性が空文字でない中から3つ目の要素のvalueに入れてください。
@@ -85,33 +85,24 @@ async function analyzeFormWithChatGPT(formHTML: string): Promise<string> {
 }
 
 async function normalizeFields(
-  formData: Record<string, string>,
-  fields: string[],
+  fields: Record<string, { tag: string; type: string; value?: string }>
 ): Promise<Record<string, { tag: string; type: string; value?: string }>> {
   const prompt = `
   #指示
-  次の#データ を元に #フォームフィールド を名寄せしてください。
+  次の#データ から、formデータを生成してください
   結果を#出力サンプル のようなJSON形式で返してください。
   
   #フォームフィールド: ${JSON.stringify(fields)}
-  #データ: ${JSON.stringify(formData)}
 
 #ルール
-  - データにvalueが元々定義されている場合はその値を必ずvalueに入れてください。
+  以下のステップで順に整形してください
+  - #データに含まれないフィールドはフォームフィールドから除外してください
+  - #データが持つkeyをそのまま#フォームフィールドのkeyとして使ってください
+  - #フォームフィールドのtagは#データのtagと一致させてください
+  - #データにvalueが元々定義されている場合はその値を必ずvalueに入れてください。
+  - valueの定義がされていない場合はkey名から適当に推察し、それらしいデータを入れてください
 
-#入力サンプル:
-{
-    company: { tag: 'input', type: 'text' },
-    name: { tag: 'input', type: 'text' },
-    email: { tag: 'input', type: 'text' },
-    tel: { tag: 'input', type: 'text' },
-    budget_radio: { tag: 'input', type: 'radio', value: '総額' },
-    budget: { tag: 'select', value: '2,500万円以上' },
-    'area[data][]': { tag: 'input', type: 'checkbox', value: 'true' },
-    partner: { tag: 'select', value: '指定なし' },
-    textarea: { tag: 'textarea', type: 'text' },
-    'agree[data][]': { tag: 'input', type: 'checkbox', value: 'true' }
-  }
+
 
   #出力サンプル:
   {
@@ -132,7 +123,7 @@ async function normalizeFields(
   }
   `;
   const response = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o",
     messages: [{ role: "user", content: prompt }],
     response_format: { type: "json_object" },
     max_tokens: 500,
@@ -151,6 +142,8 @@ async function fillFormAndSubmit(
   for (const [field, details] of Object.entries(formData)) {
     const selector = `${details.tag}[name="${field}"]`;
     const value = formData[field].value || getDefaultFieldValue(details.type);
+    console.log(selector)
+    console.log(value)
     if (details.type === "checkbox") {
       const checkboxes = await page.$$(selector);
       if (checkboxes.length > 0) {
@@ -160,6 +153,16 @@ async function fillFormAndSubmit(
           console.error(
             `チェックボックスの操作中にエラーが発生しました: ${error}`,
           );
+          // id属性を持つinputと紐づいているlabelを探してクリック
+          const inputId = await checkboxes[0].getAttribute('id');
+          if (inputId) {
+            const labelForInput = await page.$(`label[for="${inputId}"]`);
+            if (labelForInput) {
+              await labelForInput.click();
+            } else {
+              console.error(`id属性に紐づくラベルが見つかりません: ${inputId}`);
+            }
+          }
           // 直上のlabel要素を探してクリック
           const parentLabel = await checkboxes[0].evaluateHandle((el) =>
             el.closest("label"),
@@ -213,12 +216,13 @@ async function automateContactForm(url: string): Promise<void> {
     // Analyze form HTML with ChatGPT to get required fields
     const requiredFieldsJson = await analyzeFormWithChatGPT(formHTML);
     const requiredFields = JSON.parse(requiredFieldsJson);
+    console.log(requiredFields);
 
     // Normalize form data
     const normalizedData = await normalizeFields(
-      formData,
-      Object.keys(requiredFields),
+      requiredFields,
     );
+    console.log(normalizedData);
 
     // Fill and submit the form
     await fillFormAndSubmit(url, normalizedData);
@@ -227,22 +231,6 @@ async function automateContactForm(url: string): Promise<void> {
   }
 }
 
-const url = "https://stock-sun.com/order/";
-const formData = {
-  name: "John Doe",
-  email: "john.doe@example.com",
-  phone: "123-456-7890",
-  address: "123 Main St, Anytown, USA",
-  company: "Example Inc.",
-  job_title: "Software Engineer",
-  website: "https://example.com",
-  subject: "Inquiry about services",
-  message:
-    "This is a test message. I would like to inquire about your services.",
-  city: "Anytown",
-  state: "CA",
-  zip: "12345",
-  country: "USA",
-};
+const url = "https://h-sunad.co.jp/contact/";
 
 automateContactForm(url);
